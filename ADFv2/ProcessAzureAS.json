@@ -1,39 +1,13 @@
 {
-    "name": "ProcessAzureAS",
+    "name": "ProcessAzureAS MSI",
     "properties": {
         "activities": [
-            {
-                "name": "Login",
-                "type": "WebActivity",
-                "dependsOn": [],
-                "policy": {
-                    "timeout": "7.00:00:00",
-                    "retry": 0,
-                    "retryIntervalInSeconds": 30,
-                    "secureOutput": false
-                },
-                "userProperties": [],
-                "typeProperties": {
-                    "url": {
-                        "value": "@concat('https://login.microsoftonline.com/',pipeline().parameters.TenantID,'/oauth2/token')",
-                        "type": "Expression"
-                    },
-                    "method": "POST",
-                    "headers": {
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    "body": {
-                        "value": "@concat('grant_type=client_credentials&resource=https://*.asazure.windows.net&client_id=',pipeline().parameters.ClientID,'&client_secret=',encodeUriComponent(pipeline().parameters.ClientSecret))",
-                        "type": "Expression"
-                    }
-                }
-            },
             {
                 "name": "UntilRefreshComplete",
                 "type": "Until",
                 "dependsOn": [
                     {
-                        "activity": "FilterToCurrentRefresh",
+                        "activity": "StartProcessingAzureAS",
                         "dependencyConditions": [
                             "Succeeded"
                         ]
@@ -65,16 +39,18 @@
                             },
                             "userProperties": [],
                             "typeProperties": {
+                                "method": "GET",
                                 "url": {
-                                    "value": "@concat('https://',pipeline().parameters.Region,'.asazure.windows.net/servers/',pipeline().parameters.Server,'/models/',pipeline().parameters.DatabaseName,'/refreshes/',activity('FilterToCurrentRefresh').output.Value[0].refreshId)",
+                                    "value": "@activity('StartProcessingAzureAS').output.ADFWebActivityResponseHeaders.Location",
                                     "type": "Expression"
                                 },
-                                "method": "GET",
-                                "headers": {
-                                    "Authorization": {
-                                        "value": "@concat(string(activity('Login').output.token_type),' ',string(activity('Login').output.access_token))",
-                                        "type": "Expression"
-                                    }
+                                "connectVia": {
+                                    "referenceName": "AutoResolveIntegrationRuntime",
+                                    "type": "IntegrationRuntimeReference"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://*.asazure.windows.net"
                                 }
                             }
                         },
@@ -92,39 +68,9 @@
                 }
             },
             {
-                "name": "FilterToCurrentRefresh",
-                "type": "Filter",
-                "dependsOn": [
-                    {
-                        "activity": "GetAzureASRefreshes",
-                        "dependencyConditions": [
-                            "Succeeded"
-                        ]
-                    }
-                ],
-                "userProperties": [],
-                "typeProperties": {
-                    "items": {
-                        "value": "@json(activity('GetAzureASRefreshes').output.Response)",
-                        "type": "Expression"
-                    },
-                    "condition": {
-                        "value": "@greaterOrEquals(item().startTime,addseconds(activity('StartProcessingAzureAS').output.startTime,-30))",
-                        "type": "Expression"
-                    }
-                }
-            },
-            {
                 "name": "StartProcessingAzureAS",
                 "type": "WebActivity",
-                "dependsOn": [
-                    {
-                        "activity": "Login",
-                        "dependencyConditions": [
-                            "Succeeded"
-                        ]
-                    }
-                ],
+                "dependsOn": [],
                 "policy": {
                     "timeout": "7.00:00:00",
                     "retry": 0,
@@ -133,22 +79,25 @@
                 },
                 "userProperties": [],
                 "typeProperties": {
+                    "method": "POST",
+                    "turnOffAsync": true,
                     "url": {
                         "value": "@concat('https://',pipeline().parameters.Region,'.asazure.windows.net/servers/',pipeline().parameters.Server,'/models/',pipeline().parameters.DatabaseName,'/refreshes')",
                         "type": "Expression"
                     },
-                    "method": "POST",
-                    "headers": {
-                        "Authorization": {
-                            "value": "@concat(string(activity('Login').output.token_type),' ',string(activity('Login').output.access_token))",
-                            "type": "Expression"
-                        }
+                    "connectVia": {
+                        "referenceName": "AutoResolveIntegrationRuntime",
+                        "type": "IntegrationRuntimeReference"
                     },
                     "body": {
                         "Type": "Full",
                         "CommitMode": "transactional",
                         "MaxParallelism": 10,
                         "RetryCount": 2
+                    },
+                    "authentication": {
+                        "type": "MSI",
+                        "resource": "https://*.asazure.windows.net"
                     }
                 }
             },
@@ -176,60 +125,19 @@
                             "dependsOn": [],
                             "userProperties": [],
                             "typeProperties": {
-                                "message": "@string(activity('GetAzureASRefreshStatus').output)",
+                                "message": {
+                                    "value": "@string(activity('GetAzureASRefreshStatus').output)",
+                                    "type": "Expression"
+                                },
                                 "errorCode": "100"
                             }
                         }
                     ]
                 }
-            },
-            {
-                "name": "GetAzureASRefreshes",
-                "type": "WebActivity",
-                "dependsOn": [
-                    {
-                        "activity": "StartProcessingAzureAS",
-                        "dependencyConditions": [
-                            "Succeeded"
-                        ]
-                    }
-                ],
-                "policy": {
-                    "timeout": "7.00:00:00",
-                    "retry": 0,
-                    "retryIntervalInSeconds": 30,
-                    "secureOutput": false
-                },
-                "userProperties": [],
-                "typeProperties": {
-                    "url": {
-                        "value": "@concat('https://',pipeline().parameters.Region,'.asazure.windows.net/servers/',pipeline().parameters.Server,'/models/',pipeline().parameters.DatabaseName,'/refreshes')",
-                        "type": "Expression"
-                    },
-                    "method": "GET",
-                    "headers": {
-                        "Authorization": {
-                            "value": "@concat(string(activity('Login').output.token_type),' ',string(activity('Login').output.access_token))",
-                            "type": "Expression"
-                        }
-                    },
-                    "body": {
-                        "Type": "Full",
-                        "CommitMode": "transactional",
-                        "MaxParallelism": 10,
-                        "RetryCount": 2
-                    }
-                }
             }
         ],
         "parameters": {
             "TenantID": {
-                "type": "String"
-            },
-            "ClientID": {
-                "type": "String"
-            },
-            "ClientSecret": {
                 "type": "String"
             },
             "SubscriptionID": {
