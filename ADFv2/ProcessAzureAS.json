@@ -1,5 +1,5 @@
 {
-    "name": "ProcessAzureAS MSI",
+    "name": "ProcessAzureAS",
     "properties": {
         "activities": [
             {
